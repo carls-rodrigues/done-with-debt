@@ -1,0 +1,12 @@
+pub mod auth_service;
+pub mod wallet_service;
+pub mod transaction_service;
+pub mod category_service;
+pub mod budget_service;
+pub mod bill_service;
+pub mod debt_service;
+pub mod subscription_service;
+pub mod report_service;
+pub mod user_settings_service;
+pub mod notification_settings_service;
+pub mod institution_service;
