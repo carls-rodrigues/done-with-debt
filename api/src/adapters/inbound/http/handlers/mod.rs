@@ -1,0 +1,12 @@
+pub mod auth;
+pub mod wallets;
+pub mod transactions;
+pub mod categories;
+pub mod budgets;
+pub mod bills;
+pub mod debts;
+pub mod subscriptions;
+pub mod reports;
+pub mod user_settings;
+pub mod notification_settings;
+pub mod institutions;

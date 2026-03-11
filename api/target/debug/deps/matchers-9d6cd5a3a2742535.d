@@ -1,0 +1,7 @@
+/home/cerf/development/done_with_debt/api/target/debug/deps/matchers-9d6cd5a3a2742535.d: /home/cerf/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/matchers-0.2.0/src/lib.rs
+
+/home/cerf/development/done_with_debt/api/target/debug/deps/libmatchers-9d6cd5a3a2742535.rlib: /home/cerf/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/matchers-0.2.0/src/lib.rs
+
+/home/cerf/development/done_with_debt/api/target/debug/deps/libmatchers-9d6cd5a3a2742535.rmeta: /home/cerf/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/matchers-0.2.0/src/lib.rs
+
+/home/cerf/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/matchers-0.2.0/src/lib.rs:
