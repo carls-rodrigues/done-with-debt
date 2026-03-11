@@ -1,0 +1,32 @@
+[advisories]
+# Bloqueia crates com vulnerabilidades conhecidas (CVEs do RustSec)
+version = 2
+ignore = []
+
+[licenses]
+version = 2
+# Licenças permitidas no projeto
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "ISC",
+  "Unicode-DFS-2016",
+  "OpenSSL",
+]
+# Trata licenças não listadas como erro
+unlicensed = "deny"
+# Crates com licença "OR" — usar a mais permissiva
+copyleft = "deny"
+
+[bans]
+# Bloqueia versões duplicadas de crates — evita aumentar binário desnecessariamente
+multiple-versions = "warn"
+# Crates explicitamente proibidos
+deny = []
+
+[sources]
+# Só permite crates de crates.io (sem git deps não-auditados)
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

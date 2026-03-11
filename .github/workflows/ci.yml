@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # API — Rust
+  # ─────────────────────────────────────────────
+  api:
+    name: API (Rust)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: done_with_debt_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: api
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/done_with_debt_test
+      JWT_SECRET: ci_secret_for_tests
+      JWT_EXPIRY_HOURS: "168"
+      COOKIE_SECURE: "false"
+      COOKIE_SAME_SITE: lax
+      ALLOWED_ORIGINS: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy (no warnings)
+        run: cargo clippy -- -D warnings
+
+      - name: Security audit (CVEs)
+        run: cargo audit
+
+      - name: Dependency check (licenses + duplicates)
+        run: cargo deny check
+
+      - name: Run tests
+        run: cargo test
+
+  # ─────────────────────────────────────────────
+  # Web — Next.js
+  # ─────────────────────────────────────────────
+  web:
+    name: Web (Next.js)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security audit (no critical/high)
+        run: npm audit --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+
+      - name: Tests
+        run: npm test -- --passWithNoTests
+
+  # ─────────────────────────────────────────────
+  # Mobile — Flutter
+  # ─────────────────────────────────────────────
+  mobile:
+    name: Mobile (Flutter)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.x"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Tests
+        run: flutter test

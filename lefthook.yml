@@ -1,0 +1,57 @@
+pre-commit:
+  parallel: true
+  commands:
+    # ── Rust ──────────────────────────────────────
+    api-fmt:
+      glob: "api/**/*.rs"
+      run: cd api && cargo fmt --check
+      fail_text: "Run 'cargo fmt' in api/ to fix formatting"
+
+    api-clippy:
+      glob: "api/**/*.rs"
+      run: cd api && cargo clippy -- -D warnings
+      fail_text: "Fix clippy warnings before committing"
+
+    api-audit:
+      glob: "api/Cargo.{toml,lock}"
+      run: cd api && cargo audit
+      fail_text: "cargo audit found vulnerabilities — fix them before committing"
+
+    # ── Web ───────────────────────────────────────
+    web-lint:
+      glob: "web/**/*.{ts,tsx,js,jsx}"
+      run: cd web && npm run lint
+      fail_text: "Fix lint errors before committing"
+
+    web-audit:
+      glob: "web/package{.json,-lock.json}"
+      run: cd web && npm audit --audit-level=high
+      fail_text: "npm audit found high/critical vulnerabilities — fix them before committing"
+
+    # ── Flutter ───────────────────────────────────
+    mobile-analyze:
+      glob: "mobile/**/*.dart"
+      run: cd mobile && flutter analyze
+      fail_text: "Fix flutter analyze issues before committing"
+
+commit-msg:
+  commands:
+    conventional-commits:
+      run: |
+        commit_msg=$(cat {1})
+        pattern="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?(!)?: .{1,100}"
+        if ! echo "$commit_msg" | grep -qE "$pattern"; then
+          echo ""
+          echo "  ERROR: Commit message does not follow Conventional Commits."
+          echo ""
+          echo "  Format: <type>(<scope>): <description>"
+          echo ""
+          echo "  Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+          echo ""
+          echo "  Examples:"
+          echo "    feat(wallet): add create wallet endpoint"
+          echo "    fix(auth): correct JWT expiry calculation"
+          echo "    docs: update README with setup instructions"
+          echo ""
+          exit 1
+        fi
