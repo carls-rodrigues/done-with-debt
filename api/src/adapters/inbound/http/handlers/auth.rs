@@ -53,7 +53,38 @@ fn auth_cookie(
 }
 
 fn clear_cookie() -> HeaderValue {
-    HeaderValue::from_static("token=; HttpOnly; Path=/; Max-Age=0")
+    // Mirror the SameSite/Secure logic used for the auth cookie so that the
+    // clearing Set-Cookie reliably targets the same cookie instance.
+    let same_site = std::env::var("COOKIE_SAME_SITE").unwrap_or_else(|_| "Lax".to_string());
+    let normalized_same_site = if same_site.eq_ignore_ascii_case("strict") {
+        "Strict"
+    } else if same_site.eq_ignore_ascii_case("lax") {
+        "Lax"
+    } else if same_site.eq_ignore_ascii_case("none") {
+        "None"
+    } else {
+        // Fall back to a safe default rather than failing, since this function
+        // does not return a Result.
+        "Lax"
+    };
+
+    // Interpret COOKIE_SECURE in a forgiving way: "true"/"1" enable Secure.
+    let secure = std::env::var("COOKIE_SECURE")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+
+    // SameSite=None requires Secure per spec — enforce it regardless of config.
+    let effective_secure = secure || normalized_same_site == "None";
+    let secure_flag = if effective_secure { "; Secure" } else { "" };
+
+    let value = format!(
+        "token=; HttpOnly; Path=/; SameSite={}; Max-Age=0{}",
+        normalized_same_site, secure_flag
+    );
+
+    HeaderValue::from_str(&value)
+        // On any error constructing the header, fall back to the previous behavior.
+        .unwrap_or_else(|_| HeaderValue::from_static("token=; HttpOnly; Path=/; Max-Age=0"))
 }
 
 /// Extracts the raw JWT from `Authorization: Bearer <token>` or the `token` cookie.
