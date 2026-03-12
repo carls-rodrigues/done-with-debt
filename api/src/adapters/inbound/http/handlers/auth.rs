@@ -43,11 +43,18 @@ fn clear_cookie() -> HeaderValue {
 }
 
 /// Extracts the raw JWT from `Authorization: Bearer <token>` or the `token` cookie.
+/// The Bearer scheme comparison is case-insensitive per RFC 7235.
 fn extract_token(headers: &HeaderMap) -> Option<String> {
     if let Some(auth) = headers.get("authorization") {
         if let Ok(val) = auth.to_str() {
-            if let Some(token) = val.strip_prefix("Bearer ") {
-                return Some(token.to_string());
+            let mut parts = val.splitn(2, |c: char| c.is_ascii_whitespace());
+            if let (Some(scheme), Some(token)) = (parts.next(), parts.next()) {
+                if scheme.eq_ignore_ascii_case("bearer") {
+                    let token = token.trim();
+                    if !token.is_empty() {
+                        return Some(token.to_string());
+                    }
+                }
             }
         }
     }

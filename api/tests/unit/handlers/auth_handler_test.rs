@@ -8,7 +8,7 @@ use axum::{
 use tower::util::ServiceExt;
 
 use done_with_debt_api::{
-    adapters::inbound::http::handlers::auth::{login, register, AuthState},
+    adapters::inbound::http::handlers::auth::{login, logout, refresh, register, AuthState},
     domain::ports::inbound::auth_service::{
         AuthResult, AuthServicePort, LoginCommand, LogoutCommand, RefreshCommand, RegisterCommand,
     },
@@ -16,7 +16,7 @@ use done_with_debt_api::{
 };
 
 use async_trait::async_trait;
-use axum::routing::post;
+use axum::routing::{delete, post};
 use uuid::Uuid;
 
 // ── Stub AuthService ──────────────────────────────────────────────────────────
@@ -60,6 +60,8 @@ fn make_router(secure: bool, same_site: &str, expiry_hours: u64) -> Router {
     Router::new()
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
+        .route("/auth/logout", delete(logout))
+        .route("/auth/refresh", post(refresh))
         .with_state(state)
 }
 
@@ -232,5 +234,140 @@ async fn invalid_cookie_same_site_returns_500_instead_of_panicking() {
         response.status(),
         StatusCode::INTERNAL_SERVER_ERROR,
         "invalid cookie config must return 500, not panic"
+    );
+}
+
+// ── logout coverage ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn logout_with_bearer_token_returns_no_content() {
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/auth/logout")
+                .header("Authorization", "Bearer test.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn logout_with_cookie_returns_no_content() {
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/auth/logout")
+                .header("Cookie", "token=test.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn logout_with_no_auth_returns_unauthorized() {
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/auth/logout")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── refresh coverage ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn refresh_with_bearer_token_returns_ok() {
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("Authorization", "Bearer test.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn refresh_with_cookie_returns_ok() {
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header("Cookie", "token=test.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn refresh_with_no_auth_returns_unauthorized() {
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── Bearer scheme is case-insensitive ────────────────────────────────────────
+
+#[tokio::test]
+async fn bearer_scheme_is_case_insensitive() {
+    // RFC 7235: auth-scheme is case-insensitive. "bearer" must work like "Bearer".
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/auth/logout")
+                .header("Authorization", "bearer test.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::NO_CONTENT,
+        "lowercase 'bearer' scheme must be accepted"
     );
 }

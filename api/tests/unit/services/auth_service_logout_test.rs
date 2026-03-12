@@ -110,7 +110,9 @@ impl AuthTokenRepository for InMemoryAuthTokenRepository {
         new_token: AuthToken,
     ) -> Result<AuthToken, AppError> {
         let mut tokens = self.tokens.lock().unwrap();
-        tokens.remove(old_token);
+        if tokens.remove(old_token).is_none() {
+            return Err(AppError::Unauthorized);
+        }
         tokens.insert(new_token.token.clone(), new_token.clone());
         Ok(new_token)
     }

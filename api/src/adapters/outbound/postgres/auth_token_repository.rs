@@ -91,6 +91,16 @@ impl AuthTokenRepository for PostgresAuthTokenRepository {
     ) -> Result<AuthToken, AppError> {
         let mut tx = self.pool.begin().await?;
 
+        let deleted = sqlx::query("DELETE FROM auth_tokens WHERE token = $1")
+            .bind(old_token)
+            .execute(&mut *tx)
+            .await?;
+
+        if deleted.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Err(AppError::Unauthorized);
+        }
+
         sqlx::query(
             r#"
             INSERT INTO auth_tokens (id, user_id, token, expires_at, created_at)
@@ -104,11 +114,6 @@ impl AuthTokenRepository for PostgresAuthTokenRepository {
         .bind(new_token.created_at)
         .execute(&mut *tx)
         .await?;
-
-        sqlx::query("DELETE FROM auth_tokens WHERE token = $1")
-            .bind(old_token)
-            .execute(&mut *tx)
-            .await?;
 
         tx.commit().await?;
 
