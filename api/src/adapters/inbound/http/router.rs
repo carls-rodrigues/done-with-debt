@@ -30,6 +30,7 @@ pub fn create_router(pool: Arc<PgPool>, config: &Config) -> Router {
         service: auth_service,
         cookie_secure: config.cookie_secure,
         cookie_same_site: config.cookie_same_site.clone(),
+        cookie_max_age_secs: config.jwt_expiry_hours * 3600,
     });
 
     let auth_routes = Router::new()

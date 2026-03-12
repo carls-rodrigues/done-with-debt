@@ -19,13 +19,16 @@ pub struct AuthState {
     pub service: Arc<dyn AuthServicePort>,
     pub cookie_secure: bool,
     pub cookie_same_site: String,
+    pub cookie_max_age_secs: u64,
 }
 
-fn auth_cookie(token: &str, secure: bool, same_site: &str) -> HeaderValue {
-    let secure_flag = if secure { "; Secure" } else { "" };
+fn auth_cookie(token: &str, secure: bool, same_site: &str, max_age_secs: u64) -> HeaderValue {
+    // SameSite=None requires Secure per spec — enforce it regardless of config.
+    let effective_secure = secure || same_site.eq_ignore_ascii_case("none");
+    let secure_flag = if effective_secure { "; Secure" } else { "" };
     HeaderValue::from_str(&format!(
-        "token={}; HttpOnly; Path=/; SameSite={}{}",
-        token, same_site, secure_flag
+        "token={}; HttpOnly; Path=/; SameSite={}; Max-Age={}{}",
+        token, same_site, max_age_secs, secure_flag
     ))
     .expect("valid cookie header value")
 }
@@ -71,7 +74,12 @@ pub async fn register(
     let mut headers = HeaderMap::new();
     headers.insert(
         "Set-Cookie",
-        auth_cookie(&auth.token, state.cookie_secure, &state.cookie_same_site),
+        auth_cookie(
+            &auth.token,
+            state.cookie_secure,
+            &state.cookie_same_site,
+            state.cookie_max_age_secs,
+        ),
     );
 
     Ok((
@@ -99,7 +107,12 @@ pub async fn login(
     let mut headers = HeaderMap::new();
     headers.insert(
         "Set-Cookie",
-        auth_cookie(&auth.token, state.cookie_secure, &state.cookie_same_site),
+        auth_cookie(
+            &auth.token,
+            state.cookie_secure,
+            &state.cookie_same_site,
+            state.cookie_max_age_secs,
+        ),
     );
 
     Ok((
@@ -137,7 +150,12 @@ pub async fn refresh(
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
         "Set-Cookie",
-        auth_cookie(&auth.token, state.cookie_secure, &state.cookie_same_site),
+        auth_cookie(
+            &auth.token,
+            state.cookie_secure,
+            &state.cookie_same_site,
+            state.cookie_max_age_secs,
+        ),
     );
 
     Ok((
