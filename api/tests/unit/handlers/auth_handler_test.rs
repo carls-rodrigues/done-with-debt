@@ -347,6 +347,57 @@ async fn refresh_with_no_auth_returns_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
+// ── Empty cookie value ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn logout_with_empty_cookie_value_returns_unauthorized() {
+    // Cookie: token=  (no value) must be treated as "no token present".
+    let app = make_router(false, "Lax", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/auth/logout")
+                .header("Cookie", "token=")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "empty token= cookie must be treated as unauthenticated"
+    );
+}
+
+// ── SameSite validation ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn cookie_same_site_with_semicolon_injection_returns_500() {
+    // A semicolon in COOKIE_SAME_SITE injects extra cookie attributes.
+    // The server must reject this instead of emitting a malformed Set-Cookie.
+    let app = make_router(false, "Lax; Injected=attribute", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("Content-Type", "application/json")
+                .body(login_body())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "semicolon-injected SameSite must return 500, not silently produce a malformed cookie"
+    );
+}
+
 // ── Bearer scheme is case-insensitive ────────────────────────────────────────
 
 #[tokio::test]

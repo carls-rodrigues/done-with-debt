@@ -50,6 +50,27 @@ fn make_token(user_id: Uuid) -> AuthToken {
 }
 
 #[tokio::test]
+async fn revoke_by_token_with_unknown_token_returns_not_found() {
+    let docker = clients::Cli::default();
+    let pg = docker.run(Postgres::default());
+    let port = pg.get_host_port_ipv4(5432);
+
+    let url = format!("postgres://postgres:postgres@127.0.0.1:{}/postgres", port);
+    let pool = Arc::new(sqlx::PgPool::connect(&url).await.unwrap());
+    sqlx::migrate!("./migrations").run(&*pool).await.unwrap();
+
+    let repo = PostgresAuthTokenRepository::new(Arc::clone(&pool));
+
+    let result = repo.revoke_by_token("this.token.does.not.exist").await;
+
+    assert!(
+        matches!(result, Err(AppError::NotFound(_))),
+        "revoking an unknown token must return NotFound, got {:?}",
+        result
+    );
+}
+
+#[tokio::test]
 async fn rotate_token_with_already_rotated_old_token_returns_unauthorized() {
     let docker = clients::Cli::default();
     let pg = docker.run(Postgres::default());

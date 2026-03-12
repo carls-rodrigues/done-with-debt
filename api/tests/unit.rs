@@ -1,6 +1,9 @@
 #[path = "unit/helpers.rs"]
 pub mod helpers;
 
+#[path = "unit/config_test.rs"]
+mod config_test;
+
 #[path = "unit/services/auth_service_test.rs"]
 mod auth_service_test;
 

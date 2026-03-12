@@ -28,12 +28,26 @@ fn auth_cookie(
     same_site: &str,
     max_age_secs: u64,
 ) -> Result<HeaderValue, AppError> {
+    // Validate SameSite against the allowed set to prevent attribute injection.
+    let normalized_same_site = if same_site.eq_ignore_ascii_case("strict") {
+        "Strict"
+    } else if same_site.eq_ignore_ascii_case("lax") {
+        "Lax"
+    } else if same_site.eq_ignore_ascii_case("none") {
+        "None"
+    } else {
+        return Err(AppError::Internal(anyhow::anyhow!(
+            "Invalid COOKIE_SAME_SITE value: {:?}; must be Strict, Lax, or None",
+            same_site
+        )));
+    };
+
     // SameSite=None requires Secure per spec — enforce it regardless of config.
-    let effective_secure = secure || same_site.eq_ignore_ascii_case("none");
+    let effective_secure = secure || normalized_same_site == "None";
     let secure_flag = if effective_secure { "; Secure" } else { "" };
     HeaderValue::from_str(&format!(
         "token={}; HttpOnly; Path=/; SameSite={}; Max-Age={}{}",
-        token, same_site, max_age_secs, secure_flag
+        token, normalized_same_site, max_age_secs, secure_flag
     ))
     .map_err(|e| AppError::Internal(anyhow::anyhow!("Invalid Set-Cookie header value: {}", e)))
 }
@@ -62,7 +76,10 @@ fn extract_token(headers: &HeaderMap) -> Option<String> {
         if let Ok(val) = cookie.to_str() {
             for part in val.split(';') {
                 if let Some(token) = part.trim().strip_prefix("token=") {
-                    return Some(token.to_string());
+                    let token = token.trim();
+                    if !token.is_empty() {
+                        return Some(token.to_string());
+                    }
                 }
             }
         }

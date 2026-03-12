@@ -14,7 +14,7 @@ use crate::{
             user_repository::PostgresUserRepository,
         },
     },
-    config::Config,
+    config::{hours_to_max_age_secs, Config},
     domain::{ports::inbound::auth_service::AuthServicePort, services::auth_service::AuthService},
 };
 
@@ -30,7 +30,8 @@ pub fn create_router(pool: Arc<PgPool>, config: &Config) -> Router {
         service: auth_service,
         cookie_secure: config.cookie_secure,
         cookie_same_site: config.cookie_same_site.clone(),
-        cookie_max_age_secs: config.jwt_expiry_hours * 3600,
+        cookie_max_age_secs: hours_to_max_age_secs(config.jwt_expiry_hours)
+            .expect("JWT_EXPIRY_HOURS * 3600 overflows u64; use a smaller value"),
     });
 
     let auth_routes = Router::new()

@@ -1,5 +1,11 @@
 use std::env;
 
+/// Converts JWT expiry hours to cookie Max-Age seconds.
+/// Returns `None` if the multiplication would overflow `u64`.
+pub fn hours_to_max_age_secs(hours: u64) -> Option<u64> {
+    hours.checked_mul(3600)
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub host: String,

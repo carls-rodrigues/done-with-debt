@@ -76,10 +76,14 @@ impl AuthTokenRepository for PostgresAuthTokenRepository {
     }
 
     async fn revoke_by_token(&self, token: &str) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM auth_tokens WHERE token = $1")
+        let result = sqlx::query("DELETE FROM auth_tokens WHERE token = $1")
             .bind(token)
             .execute(&*self.pool)
             .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("Token not found".to_string()));
+        }
 
         Ok(())
     }
