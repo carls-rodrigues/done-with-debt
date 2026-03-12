@@ -989,6 +989,42 @@ if plan == Plan::Free && count >= 2 {
 
 ---
 
+### Branching: Gitflow
+
+**Branches permanentes (protegidas no GitHub):**
+- `main` — produção. Só recebe merges de `release/*` e `hotfix/*`
+- `develop` — integração. Toda feature é mergeada aqui primeiro
+
+**Branches de curta duração:**
+```
+feature/<descricao-curta>   ex: feature/create-wallet-endpoint
+bugfix/<descricao-curta>    ex: bugfix/fix-jwt-expiry
+release/<versao>            ex: release/1.0.0
+hotfix/<descricao-curta>    ex: hotfix/fix-critical-auth-bug
+```
+
+**Fluxo padrão de feature:**
+```
+develop → feature/xxx → PR para develop → merge → deletar branch
+```
+
+**Fluxo de release:**
+```
+develop → release/x.y.z → ajustes finais → merge em main + develop → tag vx.y.z
+```
+
+**Fluxo de hotfix:**
+```
+main → hotfix/xxx → fix → merge em main + develop → tag vx.y.z
+```
+
+**Regras:**
+- Nunca commitar diretamente em `main` ou `develop`
+- Todo merge via Pull Request com CI verde obrigatório
+- Branch names devem seguir o padrão acima (validado pelo hook pre-push)
+
+---
+
 ## 14. Decisões Arquiteturais (ADRs)
 
 ### ADR-001: Rust + Axum + SQLx como backend

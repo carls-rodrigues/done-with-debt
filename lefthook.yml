@@ -34,6 +34,25 @@ pre-commit:
       run: cd mobile && flutter analyze
       fail_text: "Fix flutter analyze issues before committing"
 
+pre-push:
+  commands:
+    branch-name:
+      run: |
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        pattern="^(main|develop|feature/.+|bugfix/.+|release/.+|hotfix/.+)$"
+        if ! echo "$branch" | grep -qE "$pattern"; then
+          echo ""
+          echo "  ERROR: Branch name '$branch' does not follow Gitflow convention."
+          echo ""
+          echo "  Allowed patterns:"
+          echo "    feature/<description>   ex: feature/create-wallet-endpoint"
+          echo "    bugfix/<description>    ex: bugfix/fix-jwt-expiry"
+          echo "    release/<version>       ex: release/1.0.0"
+          echo "    hotfix/<description>    ex: hotfix/fix-critical-auth-bug"
+          echo ""
+          exit 1
+        fi
+
 commit-msg:
   commands:
     conventional-commits:
