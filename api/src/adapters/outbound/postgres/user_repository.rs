@@ -99,7 +99,15 @@ impl UserRepository for PostgresUserRepository {
         .bind(user.created_at)
         .bind(user.updated_at)
         .execute(&*self.pool)
-        .await?;
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some("23505") {
+                    return AppError::Conflict("Email already in use".to_string());
+                }
+            }
+            AppError::Database(e)
+        })?;
 
         Ok(user)
     }
