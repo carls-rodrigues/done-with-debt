@@ -6,19 +6,15 @@ use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use done_with_debt_api::domain::{
-    entities::{
-        auth_token::AuthToken,
-        user::{Plan, User},
-    },
+    entities::user::{Plan, User},
     ports::{
         inbound::auth_service::{AuthServicePort, LoginCommand},
-        outbound::{
-            auth_token_repository::AuthTokenRepository,
-            user_repository::{FailedLoginOutcome, UserRepository},
-        },
+        outbound::user_repository::{FailedLoginOutcome, UserRepository},
     },
     services::auth_service::AuthService,
 };
+
+use super::helpers::NoopAuthTokenRepository;
 use done_with_debt_api::errors::AppError;
 
 // ── In-memory mock repository ─────────────────────────────────────────────────
@@ -171,21 +167,6 @@ impl UserRepository for SharedRepo {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const JWT_SECRET: &str = "test_secret_key_32_chars_minimum!";
-
-struct NoopAuthTokenRepository;
-
-#[async_trait]
-impl AuthTokenRepository for NoopAuthTokenRepository {
-    async fn create(&self, token: AuthToken) -> Result<AuthToken, AppError> {
-        Ok(token)
-    }
-    async fn find_by_token(&self, _token: &str) -> Result<Option<AuthToken>, AppError> {
-        Ok(None)
-    }
-    async fn revoke_by_token(&self, _token: &str) -> Result<(), AppError> {
-        Ok(())
-    }
-}
 
 fn make_service(
     repo: InMemoryUserRepository,
