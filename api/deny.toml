@@ -1,7 +1,12 @@
 [advisories]
 # Bloqueia crates com vulnerabilidades conhecidas (CVEs do RustSec)
 version = 2
-ignore = []
+ignore = [
+  # RUSTSEC-2023-0071: Marvin Attack in rsa crate (pulled in by sqlx-mysql,
+  # which is a transitive dep of sqlx-macros-core). We do not use MySQL or
+  # RSA operations. No fix available upstream. Safe to ignore in this context.
+  "RUSTSEC-2023-0071",
+]
 
 [licenses]
 version = 2

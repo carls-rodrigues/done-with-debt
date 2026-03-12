@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+    # Marvin Attack in rsa — transitive dep via sqlx-mysql (not used).
+    # No fix available upstream. Not exploitable: we use PostgreSQL only.
+    "RUSTSEC-2023-0071",
+]
