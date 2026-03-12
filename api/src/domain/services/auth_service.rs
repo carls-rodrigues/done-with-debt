@@ -8,10 +8,12 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::domain::entities::auth_token::AuthToken;
 use crate::domain::entities::user::{Plan, User};
 use crate::domain::ports::inbound::auth_service::{
-    AuthResult, AuthServicePort, LoginCommand, RegisterCommand,
+    AuthResult, AuthServicePort, LoginCommand, LogoutCommand, RegisterCommand,
 };
+use crate::domain::ports::outbound::auth_token_repository::AuthTokenRepository;
 use crate::domain::ports::outbound::user_repository::{FailedLoginOutcome, UserRepository};
 use crate::errors::AppError;
 
@@ -20,20 +22,23 @@ const LOCKOUT_MINUTES: i64 = 15;
 
 #[derive(Serialize, Deserialize)]
 struct Claims {
+    jti: String, // unique token ID — ensures two logins in the same second produce distinct JWTs
     sub: String,
     exp: usize,
 }
 
-pub struct AuthService<U: UserRepository> {
+pub struct AuthService<U: UserRepository, T: AuthTokenRepository> {
     user_repo: U,
+    token_repo: T,
     jwt_secret: String,
     jwt_expiry_hours: u64,
 }
 
-impl<U: UserRepository> AuthService<U> {
-    pub fn new(user_repo: U, jwt_secret: String, jwt_expiry_hours: u64) -> Self {
+impl<U: UserRepository, T: AuthTokenRepository> AuthService<U, T> {
+    pub fn new(user_repo: U, token_repo: T, jwt_secret: String, jwt_expiry_hours: u64) -> Self {
         Self {
             user_repo,
+            token_repo,
             jwt_secret,
             jwt_expiry_hours,
         }
@@ -80,14 +85,19 @@ impl<U: UserRepository> AuthService<U> {
             .unwrap_or(false)
     }
 
+    fn expiry_hours_i64(&self) -> Result<i64, AppError> {
+        i64::try_from(self.jwt_expiry_hours)
+            .map_err(|_| AppError::Internal(anyhow::anyhow!("JWT expiry hours overflow")))
+    }
+
     fn issue_jwt(&self, user_id: Uuid) -> Result<String, AppError> {
-        let expiry_hours = i64::try_from(self.jwt_expiry_hours)
-            .map_err(|_| AppError::Internal(anyhow::anyhow!("JWT expiry hours overflow")))?;
+        let expiry_hours = self.expiry_hours_i64()?;
         let exp = (Utc::now() + Duration::hours(expiry_hours))
             .timestamp()
             .try_into()
             .map_err(|_| AppError::Internal(anyhow::anyhow!("JWT exp timestamp overflow")))?;
         let claims = Claims {
+            jti: Uuid::new_v4().to_string(),
             sub: user_id.to_string(),
             exp,
         };
@@ -98,10 +108,24 @@ impl<U: UserRepository> AuthService<U> {
         )
         .map_err(|e| AppError::Internal(anyhow::anyhow!("JWT error: {}", e)))
     }
+
+    async fn persist_token(&self, user_id: Uuid, token: &str) -> Result<(), AppError> {
+        let expiry_hours = self.expiry_hours_i64()?;
+        self.token_repo
+            .create(AuthToken {
+                id: Uuid::new_v4(),
+                user_id,
+                token: token.to_string(),
+                expires_at: Utc::now() + Duration::hours(expiry_hours),
+                created_at: Utc::now(),
+            })
+            .await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
-impl<U: UserRepository> AuthServicePort for AuthService<U> {
+impl<U: UserRepository, T: AuthTokenRepository> AuthServicePort for AuthService<U, T> {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthResult, AppError> {
         let email = cmd.email.trim().to_lowercase();
         Self::validate_email(&email)?;
@@ -125,6 +149,7 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
 
         let user = self.user_repo.create(user).await?;
         let token = self.issue_jwt(user.id)?;
+        self.persist_token(user.id, &token).await?;
 
         Ok(AuthResult {
             token,
@@ -135,14 +160,12 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
     async fn login(&self, cmd: LoginCommand) -> Result<AuthResult, AppError> {
         let email = cmd.email.trim().to_lowercase();
 
-        // Use a generic error for both "not found" and "wrong password" to prevent enumeration
         let user = self
             .user_repo
             .find_by_email(&email)
             .await?
             .ok_or(AppError::Unauthorized)?;
 
-        // Check lockout before verifying password
         if let Some(locked_until) = user.locked_until {
             if locked_until > Utc::now() {
                 return Err(AppError::TooManyRequests(format!(
@@ -174,10 +197,15 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
 
         self.user_repo.reset_failed_attempts(user.id).await?;
         let token = self.issue_jwt(user.id)?;
+        self.persist_token(user.id, &token).await?;
 
         Ok(AuthResult {
             token,
             user_id: user.id,
         })
+    }
+
+    async fn logout(&self, cmd: LogoutCommand) -> Result<(), AppError> {
+        self.token_repo.revoke_by_token(&cmd.token).await
     }
 }

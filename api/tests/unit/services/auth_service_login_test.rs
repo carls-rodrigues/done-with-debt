@@ -6,10 +6,16 @@ use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use done_with_debt_api::domain::{
-    entities::user::{Plan, User},
+    entities::{
+        auth_token::AuthToken,
+        user::{Plan, User},
+    },
     ports::{
         inbound::auth_service::{AuthServicePort, LoginCommand},
-        outbound::user_repository::{FailedLoginOutcome, UserRepository},
+        outbound::{
+            auth_token_repository::AuthTokenRepository,
+            user_repository::{FailedLoginOutcome, UserRepository},
+        },
     },
     services::auth_service::AuthService,
 };
@@ -166,8 +172,30 @@ impl UserRepository for SharedRepo {
 
 const JWT_SECRET: &str = "test_secret_key_32_chars_minimum!";
 
-fn make_service(repo: InMemoryUserRepository) -> AuthService<InMemoryUserRepository> {
-    AuthService::new(repo, JWT_SECRET.to_string(), 168_u64)
+struct NoopAuthTokenRepository;
+
+#[async_trait]
+impl AuthTokenRepository for NoopAuthTokenRepository {
+    async fn create(&self, token: AuthToken) -> Result<AuthToken, AppError> {
+        Ok(token)
+    }
+    async fn find_by_token(&self, _token: &str) -> Result<Option<AuthToken>, AppError> {
+        Ok(None)
+    }
+    async fn revoke_by_token(&self, _token: &str) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+fn make_service(
+    repo: InMemoryUserRepository,
+) -> AuthService<InMemoryUserRepository, NoopAuthTokenRepository> {
+    AuthService::new(
+        repo,
+        NoopAuthTokenRepository,
+        JWT_SECRET.to_string(),
+        168_u64,
+    )
 }
 
 /// Builds a User with an argon2 hash for the provided password.
@@ -265,6 +293,7 @@ async fn login_wrong_password_increments_failed_attempts() {
     let repo = Arc::new(InMemoryUserRepository::with_user(user));
     let service = AuthService::new(
         SharedRepo(Arc::clone(&repo)),
+        NoopAuthTokenRepository,
         JWT_SECRET.to_string(),
         168_u64,
     );

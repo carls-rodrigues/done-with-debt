@@ -6,14 +6,34 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use done_with_debt_api::domain::{
-    entities::user::User,
+    entities::{auth_token::AuthToken, user::User},
     ports::{
         inbound::auth_service::{AuthServicePort, RegisterCommand},
-        outbound::user_repository::{FailedLoginOutcome, UserRepository},
+        outbound::{
+            auth_token_repository::AuthTokenRepository,
+            user_repository::{FailedLoginOutcome, UserRepository},
+        },
     },
     services::auth_service::AuthService,
 };
 use done_with_debt_api::errors::AppError;
+
+// ── No-op auth token repository for register tests ───────────────────────────
+
+struct NoopAuthTokenRepository;
+
+#[async_trait]
+impl AuthTokenRepository for NoopAuthTokenRepository {
+    async fn create(&self, token: AuthToken) -> Result<AuthToken, AppError> {
+        Ok(token)
+    }
+    async fn find_by_token(&self, _token: &str) -> Result<Option<AuthToken>, AppError> {
+        Ok(None)
+    }
+    async fn revoke_by_token(&self, _token: &str) -> Result<(), AppError> {
+        Ok(())
+    }
+}
 
 // ── In-memory mock repository ────────────────────────────────────────────────
 
@@ -90,9 +110,12 @@ impl UserRepository for InMemoryUserRepository {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn make_service(repo: InMemoryUserRepository) -> AuthService<InMemoryUserRepository> {
+fn make_service(
+    repo: InMemoryUserRepository,
+) -> AuthService<InMemoryUserRepository, NoopAuthTokenRepository> {
     AuthService::new(
         repo,
+        NoopAuthTokenRepository,
         "test_secret_key_32_chars_minimum!".to_string(),
         168_u64,
     )
