@@ -22,7 +22,12 @@ pub struct AuthState {
     pub cookie_max_age_secs: u64,
 }
 
-fn auth_cookie(token: &str, secure: bool, same_site: &str, max_age_secs: u64) -> HeaderValue {
+fn auth_cookie(
+    token: &str,
+    secure: bool,
+    same_site: &str,
+    max_age_secs: u64,
+) -> Result<HeaderValue, AppError> {
     // SameSite=None requires Secure per spec — enforce it regardless of config.
     let effective_secure = secure || same_site.eq_ignore_ascii_case("none");
     let secure_flag = if effective_secure { "; Secure" } else { "" };
@@ -30,7 +35,7 @@ fn auth_cookie(token: &str, secure: bool, same_site: &str, max_age_secs: u64) ->
         "token={}; HttpOnly; Path=/; SameSite={}; Max-Age={}{}",
         token, same_site, max_age_secs, secure_flag
     ))
-    .expect("valid cookie header value")
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("Invalid Set-Cookie header value: {}", e)))
 }
 
 fn clear_cookie() -> HeaderValue {
@@ -79,7 +84,7 @@ pub async fn register(
             state.cookie_secure,
             &state.cookie_same_site,
             state.cookie_max_age_secs,
-        ),
+        )?,
     );
 
     Ok((
@@ -112,7 +117,7 @@ pub async fn login(
             state.cookie_secure,
             &state.cookie_same_site,
             state.cookie_max_age_secs,
-        ),
+        )?,
     );
 
     Ok((
@@ -155,7 +160,7 @@ pub async fn refresh(
             state.cookie_secure,
             &state.cookie_same_site,
             state.cookie_max_age_secs,
-        ),
+        )?,
     );
 
     Ok((

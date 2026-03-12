@@ -210,3 +210,27 @@ async fn cookie_is_secure_when_same_site_none_even_if_secure_false() {
         "cookie must be Secure when SameSite=None, got: {cookie}"
     );
 }
+
+#[tokio::test]
+async fn invalid_cookie_same_site_returns_500_instead_of_panicking() {
+    // A value with a newline makes HeaderValue::from_str fail.
+    // The handler must return 500 Internal Server Error, not panic.
+    let app = make_router(false, "Lax\r\nInjected: header", 168);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("Content-Type", "application/json")
+                .body(login_body())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "invalid cookie config must return 500, not panic"
+    );
+}
