@@ -3,6 +3,14 @@ name = "done_with_debt_api"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "done_with_debt_api"
+path = "src/lib.rs"
+
+[[bin]]
+name = "done_with_debt_api"
+path = "src/main.rs"
+
 [dependencies]
 # Runtime
 tokio = { version = "1", features = ["full"] }
@@ -16,7 +24,7 @@ tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"]
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "bigdecimal"] }
 
 # Auth
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", features = ["use_pem", "rust_crypto"] }
 argon2 = "0.5"
 
 # Serialization
@@ -34,6 +42,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # Config
 dotenvy = "0.15"
+
+# Async traits
+async-trait = "0.1"
 
 # Error handling
 thiserror = "1"
@@ -54,3 +65,5 @@ bigdecimal = { version = "0.4", features = ["serde"] }
 [dev-dependencies]
 testcontainers = "0.15"
 testcontainers-modules = { version = "0.3", features = ["postgres"] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full", "test-util"] }

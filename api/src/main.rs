@@ -1,8 +1,4 @@
-mod config;
-mod db;
-mod errors;
-mod domain;
-mod adapters;
+use done_with_debt_api::{adapters, config, db};
 
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -15,7 +11,9 @@ async fn main() {
         .init();
 
     let config = config::Config::from_env().expect("Failed to load config");
-    let pool = db::create_pool(&config.database_url).await.expect("Failed to connect to database");
+    let pool = db::create_pool(&config.database_url)
+        .await
+        .expect("Failed to connect to database");
 
     let app = adapters::inbound::http::router::create_router(Arc::new(pool));
 
