@@ -1,2 +1,2 @@
-pub mod stripe;
 pub mod revenuecat;
+pub mod stripe;
