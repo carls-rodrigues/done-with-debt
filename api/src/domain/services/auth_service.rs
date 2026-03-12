@@ -49,7 +49,8 @@ impl<U: UserRepository> AuthService<U> {
     }
 
     fn validate_email(email: &str) -> Result<(), AppError> {
-        if !email.contains('@') || !email.contains('.') {
+        use validator::ValidateEmail;
+        if !email.validate_email() {
             return Err(AppError::Validation("Invalid email address".to_string()));
         }
         Ok(())
@@ -82,10 +83,11 @@ impl<U: UserRepository> AuthService<U> {
 #[async_trait]
 impl<U: UserRepository> AuthServicePort for AuthService<U> {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthResult, AppError> {
-        Self::validate_email(&cmd.email)?;
+        let email = cmd.email.trim().to_lowercase();
+        Self::validate_email(&email)?;
         Self::validate_password(&cmd.password)?;
 
-        if self.user_repo.find_by_email(&cmd.email).await?.is_some() {
+        if self.user_repo.find_by_email(&email).await?.is_some() {
             return Err(AppError::Conflict("Email already in use".to_string()));
         }
 
@@ -93,7 +95,7 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
         let now = Utc::now();
         let user = User {
             id: Uuid::new_v4(),
-            email: cmd.email,
+            email,
             password_hash: Some(password_hash),
             full_name: cmd.full_name,
             avatar_url: None,

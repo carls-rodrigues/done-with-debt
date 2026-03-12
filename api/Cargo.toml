@@ -65,5 +65,3 @@ bigdecimal = { version = "0.4", features = ["serde"] }
 [dev-dependencies]
 testcontainers = "0.15"
 testcontainers-modules = { version = "0.3", features = ["postgres"] }
-async-trait = "0.1"
-tokio = { version = "1", features = ["full", "test-util"] }

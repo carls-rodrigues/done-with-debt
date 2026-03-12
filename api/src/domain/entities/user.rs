@@ -28,13 +28,14 @@ impl std::str::FromStr for Plan {
     }
 }
 
-impl std::convert::TryFrom<&str> for Plan {
+impl TryFrom<&str> for Plan {
     type Error = String;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         s.parse()
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: Uuid,
