@@ -8,6 +8,11 @@ pub struct RegisterCommand {
     pub full_name: String,
 }
 
+pub struct LoginCommand {
+    pub email: String,
+    pub password: String,
+}
+
 #[derive(Debug)]
 pub struct AuthResult {
     pub token: String,
@@ -17,4 +22,5 @@ pub struct AuthResult {
 #[async_trait]
 pub trait AuthServicePort: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthResult, AppError>;
+    async fn login(&self, cmd: LoginCommand) -> Result<AuthResult, AppError>;
 }

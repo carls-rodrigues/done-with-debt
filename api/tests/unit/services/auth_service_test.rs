@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use done_with_debt_api::domain::{
@@ -51,6 +52,38 @@ impl UserRepository for InMemoryUserRepository {
         users.insert(user.email.clone(), user.clone());
         Ok(user)
     }
+
+    async fn record_failed_attempt(&self, user_id: Uuid) -> Result<i32, AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .values_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        user.failed_attempts += 1;
+        Ok(user.failed_attempts)
+    }
+
+    async fn lock_until(&self, user_id: Uuid, until: DateTime<Utc>) -> Result<(), AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .values_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        user.locked_until = Some(until);
+        user.failed_attempts = 0;
+        Ok(())
+    }
+
+    async fn reset_failed_attempts(&self, user_id: Uuid) -> Result<(), AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .values_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        user.failed_attempts = 0;
+        user.locked_until = None;
+        Ok(())
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -95,6 +128,8 @@ async fn register_with_duplicate_email_returns_conflict() {
         avatar_url: None,
         email_verified_at: None,
         plan: done_with_debt_api::domain::entities::user::Plan::Free,
+        failed_attempts: 0,
+        locked_until: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
@@ -110,7 +145,7 @@ async fn register_with_duplicate_email_returns_conflict() {
 async fn register_with_short_password_returns_validation_error() {
     let service = make_service(InMemoryUserRepository::new());
     let cmd = RegisterCommand {
-        password: "pass1".to_string(), // 5 chars — too short
+        password: "pass1".to_string(), // 5 chars — below 8-char minimum
         ..valid_command()
     };
 

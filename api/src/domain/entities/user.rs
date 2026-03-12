@@ -45,6 +45,8 @@ pub struct User {
     pub avatar_url: Option<String>,
     pub email_verified_at: Option<DateTime<Utc>>,
     pub plan: Plan,
+    pub failed_attempts: i32,
+    pub locked_until: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
