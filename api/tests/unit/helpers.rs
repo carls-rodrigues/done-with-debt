@@ -19,4 +19,11 @@ impl AuthTokenRepository for NoopAuthTokenRepository {
     async fn revoke_by_token(&self, _token: &str) -> Result<(), AppError> {
         Ok(())
     }
+    async fn rotate_token(
+        &self,
+        _old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        Ok(new_token)
+    }
 }

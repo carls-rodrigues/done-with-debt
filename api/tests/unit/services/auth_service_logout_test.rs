@@ -103,6 +103,19 @@ impl AuthTokenRepository for InMemoryAuthTokenRepository {
         }
         Ok(())
     }
+
+    async fn rotate_token(
+        &self,
+        old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        let mut tokens = self.tokens.lock().unwrap();
+        if tokens.remove(old_token).is_none() {
+            return Err(AppError::Unauthorized);
+        }
+        tokens.insert(new_token.token.clone(), new_token.clone());
+        Ok(new_token)
+    }
 }
 
 // Newtype wrappers for Arc sharing
@@ -118,6 +131,13 @@ impl AuthTokenRepository for SharedTokenRepo {
     }
     async fn revoke_by_token(&self, token: &str) -> Result<(), AppError> {
         self.0.revoke_by_token(token).await
+    }
+    async fn rotate_token(
+        &self,
+        old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        self.0.rotate_token(old_token, new_token).await
     }
 }
 

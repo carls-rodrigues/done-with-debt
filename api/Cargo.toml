@@ -65,3 +65,4 @@ bigdecimal = { version = "0.4", features = ["serde"] }
 [dev-dependencies]
 testcontainers = "0.15"
 testcontainers-modules = { version = "0.3", features = ["postgres"] }
+tower = { version = "0.4", features = ["util"] }
