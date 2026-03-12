@@ -16,15 +16,25 @@ impl Plan {
     }
 }
 
-impl From<&str> for Plan {
-    fn from(s: &str) -> Self {
+impl std::str::FromStr for Plan {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "premium" => Plan::Premium,
-            _ => Plan::Free,
+            "free" => Ok(Plan::Free),
+            "premium" => Ok(Plan::Premium),
+            other => Err(format!("unknown plan value: {}", other)),
         }
     }
 }
 
+impl std::convert::TryFrom<&str> for Plan {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: Uuid,
