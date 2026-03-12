@@ -7,6 +7,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use validator::ValidateEmail;
 
 use crate::domain::entities::user::{Plan, User};
 use crate::domain::ports::inbound::auth_service::{AuthResult, AuthServicePort, RegisterCommand};
@@ -49,7 +50,7 @@ impl<U: UserRepository> AuthService<U> {
     }
 
     fn validate_email(email: &str) -> Result<(), AppError> {
-        if !email.contains('@') || !email.contains('.') {
+        if !email.validate_email() {
             return Err(AppError::Validation("Invalid email address".to_string()));
         }
         Ok(())

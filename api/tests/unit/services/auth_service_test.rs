@@ -137,3 +137,68 @@ async fn register_with_invalid_email_returns_validation_error() {
 
     assert!(matches!(result, Err(AppError::Validation(_))));
 }
+
+#[tokio::test]
+async fn register_with_multiple_at_signs_returns_validation_error() {
+    let service = make_service(InMemoryUserRepository::new());
+    let cmd = RegisterCommand {
+        email: "a@b@example.com".to_string(),
+        ..valid_command()
+    };
+
+    let result = service.register(cmd).await;
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+}
+
+#[tokio::test]
+async fn register_with_trailing_dot_email_returns_validation_error() {
+    let service = make_service(InMemoryUserRepository::new());
+    let cmd = RegisterCommand {
+        email: "user@example.com.".to_string(),
+        ..valid_command()
+    };
+
+    let result = service.register(cmd).await;
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+}
+
+#[tokio::test]
+async fn register_with_whitespace_in_email_returns_validation_error() {
+    let service = make_service(InMemoryUserRepository::new());
+    let cmd = RegisterCommand {
+        email: "user @example.com".to_string(),
+        ..valid_command()
+    };
+
+    let result = service.register(cmd).await;
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+}
+
+#[tokio::test]
+async fn register_with_missing_domain_returns_validation_error() {
+    let service = make_service(InMemoryUserRepository::new());
+    let cmd = RegisterCommand {
+        email: "user@".to_string(),
+        ..valid_command()
+    };
+
+    let result = service.register(cmd).await;
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+}
+
+#[tokio::test]
+async fn register_with_missing_local_part_returns_validation_error() {
+    let service = make_service(InMemoryUserRepository::new());
+    let cmd = RegisterCommand {
+        email: "@example.com".to_string(),
+        ..valid_command()
+    };
+
+    let result = service.register(cmd).await;
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+}
