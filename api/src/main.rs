@@ -15,7 +15,8 @@ async fn main() {
         .await
         .expect("Failed to connect to database");
 
-    let app = adapters::inbound::http::router::create_router(Arc::new(pool), &config);
+    let app = adapters::inbound::http::router::create_router(Arc::new(pool), &config)
+        .expect("Failed to build router");
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port))
         .await
