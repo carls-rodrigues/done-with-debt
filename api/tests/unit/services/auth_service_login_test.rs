@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -42,6 +42,15 @@ impl InMemoryUserRepository {
         Self {
             rows: Mutex::new(map),
         }
+    }
+
+    fn failed_attempts_for(&self, email: &str) -> i32 {
+        self.rows
+            .lock()
+            .unwrap()
+            .get(email)
+            .map(|r| r.failed_attempts)
+            .unwrap_or(0)
     }
 
     fn with_locked_user(user: User, locked_until: DateTime<Utc>) -> Self {
@@ -122,6 +131,34 @@ impl UserRepository for InMemoryUserRepository {
         row.failed_attempts = 0;
         row.locked_until = None;
         Ok(())
+    }
+}
+
+// Newtype wrapper around Arc — lets a test retain a reference to inspect state
+// after the service has consumed the repo (orphan rules forbid direct
+// `impl UserRepository for Arc<InMemoryUserRepository>`).
+struct SharedRepo(Arc<InMemoryUserRepository>);
+
+#[async_trait]
+impl UserRepository for SharedRepo {
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
+        self.0.find_by_email(email).await
+    }
+    async fn create(&self, user: User) -> Result<User, AppError> {
+        self.0.create(user).await
+    }
+    async fn record_failed_attempt(
+        &self,
+        user_id: Uuid,
+        max_attempts: i32,
+        lock_until: DateTime<Utc>,
+    ) -> Result<FailedLoginOutcome, AppError> {
+        self.0
+            .record_failed_attempt(user_id, max_attempts, lock_until)
+            .await
+    }
+    async fn reset_failed_attempts(&self, user_id: Uuid) -> Result<(), AppError> {
+        self.0.reset_failed_attempts(user_id).await
     }
 }
 
@@ -225,16 +262,21 @@ async fn login_with_locked_account_returns_too_many_requests() {
 #[tokio::test]
 async fn login_wrong_password_increments_failed_attempts() {
     let user = user_with_password("password1");
-    let repo = InMemoryUserRepository::with_user(user);
-    let service = make_service(repo);
+    let repo = Arc::new(InMemoryUserRepository::with_user(user));
+    let service = AuthService::new(
+        SharedRepo(Arc::clone(&repo)),
+        JWT_SECRET.to_string(),
+        168_u64,
+    );
 
-    // Two failed attempts
     let _ = service.login(login_cmd("john@example.com", "wrong")).await;
-    let _ = service.login(login_cmd("john@example.com", "wrong")).await;
+    assert_eq!(repo.failed_attempts_for("john@example.com"), 1);
 
-    // 3rd attempt still returns Unauthorized (not locked yet)
-    let result = service.login(login_cmd("john@example.com", "wrong")).await;
-    assert!(matches!(result, Err(AppError::Unauthorized)));
+    let _ = service.login(login_cmd("john@example.com", "wrong")).await;
+    assert_eq!(repo.failed_attempts_for("john@example.com"), 2);
+
+    let _ = service.login(login_cmd("john@example.com", "wrong")).await;
+    assert_eq!(repo.failed_attempts_for("john@example.com"), 3);
 }
 
 #[tokio::test]
