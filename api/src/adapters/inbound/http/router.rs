@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::{Context, Result};
 use axum::{
     routing::{delete, post},
     Router,
@@ -18,7 +19,10 @@ use crate::{
     domain::{ports::inbound::auth_service::AuthServicePort, services::auth_service::AuthService},
 };
 
-pub fn create_router(pool: Arc<PgPool>, config: &Config) -> Router {
+pub fn create_router(pool: Arc<PgPool>, config: &Config) -> Result<Router> {
+    let cookie_max_age_secs = hours_to_max_age_secs(config.jwt_expiry_hours)
+        .context("JWT_EXPIRY_HOURS * 3600 overflows u64; use a value ≤ 5124095576030431")?;
+
     let auth_service: Arc<dyn AuthServicePort> = Arc::new(AuthService::new(
         PostgresUserRepository::new(Arc::clone(&pool)),
         PostgresAuthTokenRepository::new(Arc::clone(&pool)),
@@ -30,8 +34,7 @@ pub fn create_router(pool: Arc<PgPool>, config: &Config) -> Router {
         service: auth_service,
         cookie_secure: config.cookie_secure,
         cookie_same_site: config.cookie_same_site.clone(),
-        cookie_max_age_secs: hours_to_max_age_secs(config.jwt_expiry_hours)
-            .expect("JWT_EXPIRY_HOURS * 3600 overflows u64; use a smaller value"),
+        cookie_max_age_secs,
     });
 
     let auth_routes = Router::new()
@@ -41,5 +44,5 @@ pub fn create_router(pool: Arc<PgPool>, config: &Config) -> Router {
         .route("/refresh", post(refresh))
         .with_state(auth_state);
 
-    Router::new().nest("/auth", auth_routes)
+    Ok(Router::new().nest("/auth", auth_routes))
 }
