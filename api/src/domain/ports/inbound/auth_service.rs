@@ -5,6 +5,7 @@ use uuid::Uuid;
 pub struct RegisterCommand {
     pub email: String,
     pub password: String,
+    pub password_confirmation: String,
     pub full_name: String,
 }
 

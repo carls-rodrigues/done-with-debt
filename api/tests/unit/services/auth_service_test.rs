@@ -60,6 +60,7 @@ fn valid_command() -> RegisterCommand {
     RegisterCommand {
         email: "john@example.com".to_string(),
         password: "password1".to_string(),
+        password_confirmation: "password1".to_string(),
         full_name: "John Doe".to_string(),
     }
 }
@@ -130,6 +131,19 @@ async fn register_with_invalid_email_returns_validation_error() {
     let service = make_service(InMemoryUserRepository::new());
     let cmd = RegisterCommand {
         email: "not-an-email".to_string(),
+        ..valid_command()
+    };
+
+    let result = service.register(cmd).await;
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+}
+
+#[tokio::test]
+async fn register_with_mismatched_passwords_returns_validation_error() {
+    let service = make_service(InMemoryUserRepository::new());
+    let cmd = RegisterCommand {
+        password_confirmation: "different1".to_string(),
         ..valid_command()
     };
 

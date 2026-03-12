@@ -87,6 +87,16 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
         Self::validate_email(&email)?;
         Self::validate_password(&cmd.password)?;
 
+        if cmd.password != cmd.password_confirmation {
+            return Err(AppError::Validation(
+                "Passwords do not match".to_string(),
+            ));
+        }
+
+        if self.user_repo.find_by_email(&email).await?.is_some() {
+            return Err(AppError::Conflict("Email already in use".to_string()));
+        }
+
         let password_hash = Self::hash_password(&cmd.password)?;
         let now = Utc::now();
         let user = User {
