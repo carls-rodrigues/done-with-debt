@@ -7,5 +7,4 @@ CREATE TABLE auth_tokens (
 );
 
 CREATE INDEX idx_auth_tokens_user_id ON auth_tokens (user_id);
--- Token lookup on every authenticated request must be fast
-CREATE INDEX idx_auth_tokens_token ON auth_tokens (token);
+-- Token lookup on every authenticated request must be fast (uses the UNIQUE index on token)
