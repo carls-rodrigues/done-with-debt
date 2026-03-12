@@ -12,7 +12,7 @@ use crate::domain::entities::user::{Plan, User};
 use crate::domain::ports::inbound::auth_service::{
     AuthResult, AuthServicePort, LoginCommand, RegisterCommand,
 };
-use crate::domain::ports::outbound::user_repository::UserRepository;
+use crate::domain::ports::outbound::user_repository::{FailedLoginOutcome, UserRepository};
 use crate::errors::AppError;
 
 const MAX_FAILED_ATTEMPTS: i32 = 5;
@@ -158,16 +158,18 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
             .ok_or(AppError::Unauthorized)?;
 
         if !Self::verify_password(&cmd.password, hash) {
-            let attempts = self.user_repo.record_failed_attempt(user.id).await?;
-            if attempts >= MAX_FAILED_ATTEMPTS {
-                let unlock_at = Utc::now() + Duration::minutes(LOCKOUT_MINUTES);
-                self.user_repo.lock_until(user.id, unlock_at).await?;
-                return Err(AppError::TooManyRequests(format!(
+            let lock_at = Utc::now() + Duration::minutes(LOCKOUT_MINUTES);
+            let outcome = self
+                .user_repo
+                .record_failed_attempt(user.id, MAX_FAILED_ATTEMPTS, lock_at)
+                .await?;
+            return match outcome {
+                FailedLoginOutcome::Locked { until } => Err(AppError::TooManyRequests(format!(
                     "Account locked until {}",
-                    unlock_at.format("%H:%M UTC")
-                )));
-            }
-            return Err(AppError::Unauthorized);
+                    until.format("%H:%M UTC")
+                ))),
+                FailedLoginOutcome::Incremented { .. } => Err(AppError::Unauthorized),
+            };
         }
 
         self.user_repo.reset_failed_attempts(user.id).await?;

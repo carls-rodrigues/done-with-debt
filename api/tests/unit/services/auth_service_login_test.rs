@@ -9,7 +9,7 @@ use done_with_debt_api::domain::{
     entities::user::{Plan, User},
     ports::{
         inbound::auth_service::{AuthServicePort, LoginCommand},
-        outbound::user_repository::UserRepository,
+        outbound::user_repository::{FailedLoginOutcome, UserRepository},
     },
     services::auth_service::AuthService,
 };
@@ -90,25 +90,27 @@ impl UserRepository for InMemoryUserRepository {
         Ok(user)
     }
 
-    async fn record_failed_attempt(&self, user_id: Uuid) -> Result<i32, AppError> {
+    async fn record_failed_attempt(
+        &self,
+        user_id: Uuid,
+        max_attempts: i32,
+        lock_until: DateTime<Utc>,
+    ) -> Result<FailedLoginOutcome, AppError> {
         let mut rows = self.rows.lock().unwrap();
         let row = rows
             .values_mut()
             .find(|r| r.user.id == user_id)
             .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
         row.failed_attempts += 1;
-        Ok(row.failed_attempts)
-    }
-
-    async fn lock_until(&self, user_id: Uuid, until: DateTime<Utc>) -> Result<(), AppError> {
-        let mut rows = self.rows.lock().unwrap();
-        let row = rows
-            .values_mut()
-            .find(|r| r.user.id == user_id)
-            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-        row.locked_until = Some(until);
-        row.failed_attempts = 0;
-        Ok(())
+        if row.failed_attempts >= max_attempts {
+            row.locked_until = Some(lock_until);
+            row.failed_attempts = 0;
+            Ok(FailedLoginOutcome::Locked { until: lock_until })
+        } else {
+            Ok(FailedLoginOutcome::Incremented {
+                attempts: row.failed_attempts,
+            })
+        }
     }
 
     async fn reset_failed_attempts(&self, user_id: Uuid) -> Result<(), AppError> {

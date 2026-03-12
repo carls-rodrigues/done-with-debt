@@ -9,6 +9,8 @@ CREATE TABLE users (
     email_verified_at   TIMESTAMPTZ,
     plan                TEXT NOT NULL DEFAULT 'free'
                             CHECK (plan IN ('free', 'premium')),
+    failed_attempts     INTEGER NOT NULL DEFAULT 0,
+    locked_until        TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at          TIMESTAMPTZ
