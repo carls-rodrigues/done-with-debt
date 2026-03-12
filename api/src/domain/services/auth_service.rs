@@ -1,6 +1,6 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
-    Argon2, PasswordHasher,
+    password_hash::{rand_core::OsRng, PasswordVerifier, SaltString},
+    Argon2, PasswordHash, PasswordHasher,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -9,9 +9,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::entities::user::{Plan, User};
-use crate::domain::ports::inbound::auth_service::{AuthResult, AuthServicePort, RegisterCommand};
-use crate::domain::ports::outbound::user_repository::UserRepository;
+use crate::domain::ports::inbound::auth_service::{
+    AuthResult, AuthServicePort, LoginCommand, RegisterCommand,
+};
+use crate::domain::ports::outbound::user_repository::{FailedLoginOutcome, UserRepository};
 use crate::errors::AppError;
+
+const MAX_FAILED_ATTEMPTS: i32 = 5;
+const LOCKOUT_MINUTES: i64 = 15;
 
 #[derive(Serialize, Deserialize)]
 struct Claims {
@@ -65,6 +70,16 @@ impl<U: UserRepository> AuthService<U> {
             .map_err(|e| AppError::Internal(anyhow::anyhow!("Password hashing failed: {}", e)))
     }
 
+    fn verify_password(password: &str, hash: &str) -> bool {
+        PasswordHash::new(hash)
+            .map(|parsed| {
+                Argon2::default()
+                    .verify_password(password.as_bytes(), &parsed)
+                    .is_ok()
+            })
+            .unwrap_or(false)
+    }
+
     fn issue_jwt(&self, user_id: Uuid) -> Result<String, AppError> {
         let expiry_hours = i64::try_from(self.jwt_expiry_hours)
             .map_err(|_| AppError::Internal(anyhow::anyhow!("JWT expiry hours overflow")))?;
@@ -102,11 +117,62 @@ impl<U: UserRepository> AuthServicePort for AuthService<U> {
             avatar_url: None,
             email_verified_at: None,
             plan: Plan::Free,
+            failed_attempts: 0,
+            locked_until: None,
             created_at: now,
             updated_at: now,
         };
 
         let user = self.user_repo.create(user).await?;
+        let token = self.issue_jwt(user.id)?;
+
+        Ok(AuthResult {
+            token,
+            user_id: user.id,
+        })
+    }
+
+    async fn login(&self, cmd: LoginCommand) -> Result<AuthResult, AppError> {
+        let email = cmd.email.trim().to_lowercase();
+
+        // Use a generic error for both "not found" and "wrong password" to prevent enumeration
+        let user = self
+            .user_repo
+            .find_by_email(&email)
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+
+        // Check lockout before verifying password
+        if let Some(locked_until) = user.locked_until {
+            if locked_until > Utc::now() {
+                return Err(AppError::TooManyRequests(format!(
+                    "Account locked until {}",
+                    locked_until.format("%H:%M UTC")
+                )));
+            }
+        }
+
+        let hash = user
+            .password_hash
+            .as_deref()
+            .ok_or(AppError::Unauthorized)?;
+
+        if !Self::verify_password(&cmd.password, hash) {
+            let lock_at = Utc::now() + Duration::minutes(LOCKOUT_MINUTES);
+            let outcome = self
+                .user_repo
+                .record_failed_attempt(user.id, MAX_FAILED_ATTEMPTS, lock_at)
+                .await?;
+            return match outcome {
+                FailedLoginOutcome::Locked { until } => Err(AppError::TooManyRequests(format!(
+                    "Account locked until {}",
+                    until.format("%H:%M UTC")
+                ))),
+                FailedLoginOutcome::Incremented { .. } => Err(AppError::Unauthorized),
+            };
+        }
+
+        self.user_repo.reset_failed_attempts(user.id).await?;
         let token = self.issue_jwt(user.id)?;
 
         Ok(AuthResult {

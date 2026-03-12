@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use done_with_debt_api::domain::{
     entities::user::User,
     ports::{
         inbound::auth_service::{AuthServicePort, RegisterCommand},
-        outbound::user_repository::UserRepository,
+        outbound::user_repository::{FailedLoginOutcome, UserRepository},
     },
     services::auth_service::AuthService,
 };
@@ -50,6 +51,40 @@ impl UserRepository for InMemoryUserRepository {
         }
         users.insert(user.email.clone(), user.clone());
         Ok(user)
+    }
+
+    async fn record_failed_attempt(
+        &self,
+        user_id: Uuid,
+        max_attempts: i32,
+        lock_until: DateTime<Utc>,
+    ) -> Result<FailedLoginOutcome, AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .values_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        user.failed_attempts += 1;
+        if user.failed_attempts >= max_attempts {
+            user.locked_until = Some(lock_until);
+            user.failed_attempts = 0;
+            Ok(FailedLoginOutcome::Locked { until: lock_until })
+        } else {
+            Ok(FailedLoginOutcome::Incremented {
+                attempts: user.failed_attempts,
+            })
+        }
+    }
+
+    async fn reset_failed_attempts(&self, user_id: Uuid) -> Result<(), AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .values_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        user.failed_attempts = 0;
+        user.locked_until = None;
+        Ok(())
     }
 }
 
@@ -95,6 +130,8 @@ async fn register_with_duplicate_email_returns_conflict() {
         avatar_url: None,
         email_verified_at: None,
         plan: done_with_debt_api::domain::entities::user::Plan::Free,
+        failed_attempts: 0,
+        locked_until: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
@@ -110,7 +147,7 @@ async fn register_with_duplicate_email_returns_conflict() {
 async fn register_with_short_password_returns_validation_error() {
     let service = make_service(InMemoryUserRepository::new());
     let cmd = RegisterCommand {
-        password: "pass1".to_string(), // 5 chars — too short
+        password: "pass1".to_string(), // 5 chars — below 8-char minimum
         ..valid_command()
     };
 
