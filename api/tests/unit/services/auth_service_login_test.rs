@@ -131,7 +131,7 @@ fn make_service(repo: InMemoryUserRepository) -> AuthService<InMemoryUserReposit
     AuthService::new(repo, JWT_SECRET.to_string(), 168_u64)
 }
 
-/// Builds a User with a known argon2 hash for "password1".
+/// Builds a User with an argon2 hash for the provided password.
 fn user_with_password(password: &str) -> User {
     use argon2::{
         password_hash::{rand_core::OsRng, SaltString},
