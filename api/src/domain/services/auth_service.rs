@@ -4,14 +4,14 @@ use argon2::{
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
-use jsonwebtoken::{encode, EncodingKey, Header};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::entities::auth_token::AuthToken;
 use crate::domain::entities::user::{Plan, User};
 use crate::domain::ports::inbound::auth_service::{
-    AuthResult, AuthServicePort, LoginCommand, LogoutCommand, RegisterCommand,
+    AuthResult, AuthServicePort, LoginCommand, LogoutCommand, RefreshCommand, RegisterCommand,
 };
 use crate::domain::ports::outbound::auth_token_repository::AuthTokenRepository;
 use crate::domain::ports::outbound::user_repository::{FailedLoginOutcome, UserRepository};
@@ -107,6 +107,16 @@ impl<U: UserRepository, T: AuthTokenRepository> AuthService<U, T> {
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
         .map_err(|e| AppError::Internal(anyhow::anyhow!("JWT error: {}", e)))
+    }
+
+    fn decode_jwt(&self, token: &str) -> Result<Uuid, AppError> {
+        let data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
+            &Validation::default(),
+        )
+        .map_err(|_| AppError::Unauthorized)?;
+        Uuid::parse_str(&data.claims.sub).map_err(|_| AppError::Unauthorized)
     }
 
     async fn persist_token(&self, user_id: Uuid, token: &str) -> Result<(), AppError> {
@@ -207,5 +217,25 @@ impl<U: UserRepository, T: AuthTokenRepository> AuthServicePort for AuthService<
 
     async fn logout(&self, cmd: LogoutCommand) -> Result<(), AppError> {
         self.token_repo.revoke_by_token(&cmd.token).await
+    }
+
+    async fn refresh(&self, cmd: RefreshCommand) -> Result<AuthResult, AppError> {
+        // Validate JWT signature and expiry
+        let user_id = self.decode_jwt(&cmd.token)?;
+
+        // Ensure the token is still active (not revoked)
+        self.token_repo
+            .find_by_token(&cmd.token)
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+
+        let new_token = self.issue_jwt(user_id)?;
+        self.persist_token(user_id, &new_token).await?;
+        self.token_repo.revoke_by_token(&cmd.token).await?;
+
+        Ok(AuthResult {
+            token: new_token,
+            user_id,
+        })
     }
 }

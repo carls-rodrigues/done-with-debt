@@ -18,6 +18,11 @@ pub struct LogoutCommand {
     pub token: String,
 }
 
+pub struct RefreshCommand {
+    /// The current valid JWT to be rotated.
+    pub token: String,
+}
+
 #[derive(Debug)]
 pub struct AuthResult {
     pub token: String,
@@ -29,4 +34,5 @@ pub trait AuthServicePort: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthResult, AppError>;
     async fn login(&self, cmd: LoginCommand) -> Result<AuthResult, AppError>;
     async fn logout(&self, cmd: LogoutCommand) -> Result<(), AppError>;
+    async fn refresh(&self, cmd: RefreshCommand) -> Result<AuthResult, AppError>;
 }
