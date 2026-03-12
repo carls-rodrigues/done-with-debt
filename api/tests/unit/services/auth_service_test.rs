@@ -45,6 +45,9 @@ impl UserRepository for InMemoryUserRepository {
 
     async fn create(&self, user: User) -> Result<User, AppError> {
         let mut users = self.users.lock().unwrap();
+        if users.contains_key(&user.email) {
+            return Err(AppError::Conflict("Email already in use".to_string()));
+        }
         users.insert(user.email.clone(), user.clone());
         Ok(user)
     }
@@ -53,7 +56,11 @@ impl UserRepository for InMemoryUserRepository {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn make_service(repo: InMemoryUserRepository) -> AuthService<InMemoryUserRepository> {
-    AuthService::new(repo, "test_secret_key_32_chars_minimum!".to_string(), 168)
+    AuthService::new(
+        repo,
+        "test_secret_key_32_chars_minimum!".to_string(),
+        168_u64,
+    )
 }
 
 fn valid_command() -> RegisterCommand {

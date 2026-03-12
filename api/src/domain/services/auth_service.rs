@@ -22,11 +22,11 @@ struct Claims {
 pub struct AuthService<U: UserRepository> {
     user_repo: U,
     jwt_secret: String,
-    jwt_expiry_hours: i64,
+    jwt_expiry_hours: u64,
 }
 
 impl<U: UserRepository> AuthService<U> {
-    pub fn new(user_repo: U, jwt_secret: String, jwt_expiry_hours: i64) -> Self {
+    pub fn new(user_repo: U, jwt_secret: String, jwt_expiry_hours: u64) -> Self {
         Self {
             user_repo,
             jwt_secret,
@@ -66,7 +66,12 @@ impl<U: UserRepository> AuthService<U> {
     }
 
     fn issue_jwt(&self, user_id: Uuid) -> Result<String, AppError> {
-        let exp = (Utc::now() + Duration::hours(self.jwt_expiry_hours)).timestamp() as usize;
+        let expiry_hours = i64::try_from(self.jwt_expiry_hours)
+            .map_err(|_| AppError::Internal(anyhow::anyhow!("JWT expiry hours overflow")))?;
+        let exp = (Utc::now() + Duration::hours(expiry_hours))
+            .timestamp()
+            .try_into()
+            .map_err(|_| AppError::Internal(anyhow::anyhow!("JWT exp timestamp overflow")))?;
         let claims = Claims {
             sub: user_id.to_string(),
             exp,
