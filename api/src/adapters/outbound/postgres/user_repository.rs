@@ -77,10 +77,7 @@ impl UserRepository for PostgresUserRepository {
     }
 
     async fn create(&self, user: User) -> Result<User, AppError> {
-        let plan_str = match user.plan {
-            Plan::Free => "free",
-            Plan::Premium => "premium",
-        };
+        let plan_str = user.plan.as_str();
 
         sqlx::query(
             r#"

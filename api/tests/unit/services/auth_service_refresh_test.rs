@@ -39,6 +39,12 @@ impl InMemoryAuthTokenRepository {
     fn contains(&self, token: &str) -> bool {
         self.tokens.lock().unwrap().contains_key(token)
     }
+
+    fn tamper_user_id(&self, token: &str, new_user_id: Uuid) {
+        if let Some(entry) = self.tokens.lock().unwrap().get_mut(token) {
+            entry.user_id = new_user_id;
+        }
+    }
 }
 
 #[async_trait]
@@ -59,6 +65,17 @@ impl AuthTokenRepository for InMemoryAuthTokenRepository {
         self.tokens.lock().unwrap().remove(token);
         Ok(())
     }
+
+    async fn rotate_token(
+        &self,
+        old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        let mut tokens = self.tokens.lock().unwrap();
+        tokens.remove(old_token);
+        tokens.insert(new_token.token.clone(), new_token.clone());
+        Ok(new_token)
+    }
 }
 
 struct SharedTokenRepo(Arc<InMemoryAuthTokenRepository>);
@@ -73,6 +90,83 @@ impl AuthTokenRepository for SharedTokenRepo {
     }
     async fn revoke_by_token(&self, token: &str) -> Result<(), AppError> {
         self.0.revoke_by_token(token).await
+    }
+    async fn rotate_token(
+        &self,
+        old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        self.0.rotate_token(old_token, new_token).await
+    }
+}
+
+// ── Failing-rotate stub ───────────────────────────────────────────────────────
+
+struct FailingRotateTokenRepo {
+    tokens: Mutex<HashMap<String, AuthToken>>,
+}
+
+impl FailingRotateTokenRepo {
+    fn new() -> Self {
+        Self {
+            tokens: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn contains(&self, token: &str) -> bool {
+        self.tokens.lock().unwrap().contains_key(token)
+    }
+}
+
+#[async_trait]
+impl AuthTokenRepository for FailingRotateTokenRepo {
+    async fn create(&self, token: AuthToken) -> Result<AuthToken, AppError> {
+        self.tokens
+            .lock()
+            .unwrap()
+            .insert(token.token.clone(), token.clone());
+        Ok(token)
+    }
+
+    async fn find_by_token(&self, token: &str) -> Result<Option<AuthToken>, AppError> {
+        Ok(self.tokens.lock().unwrap().get(token).cloned())
+    }
+
+    async fn revoke_by_token(&self, token: &str) -> Result<(), AppError> {
+        self.tokens.lock().unwrap().remove(token);
+        Ok(())
+    }
+
+    async fn rotate_token(
+        &self,
+        _old_token: &str,
+        _new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        Err(AppError::Internal(anyhow::anyhow!(
+            "simulated rotation failure"
+        )))
+    }
+}
+
+struct SharedFailingRepo(Arc<FailingRotateTokenRepo>);
+
+#[async_trait]
+impl AuthTokenRepository for SharedFailingRepo {
+    async fn create(&self, token: AuthToken) -> Result<AuthToken, AppError> {
+        self.0.create(token).await
+    }
+    async fn find_by_token(&self, token: &str) -> Result<Option<AuthToken>, AppError> {
+        self.0.find_by_token(token).await
+    }
+    async fn revoke_by_token(&self, token: &str) -> Result<(), AppError> {
+        self.0.revoke_by_token(token).await
+    }
+    async fn rotate_token(
+        &self,
+        old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        self.0.rotate_token(old_token, new_token).await
     }
 }
 
@@ -293,4 +387,60 @@ async fn refresh_with_expired_jwt_returns_unauthorized() {
     let result = service.refresh(RefreshCommand { token: expired }).await;
 
     assert!(matches!(result, Err(AppError::Unauthorized)));
+}
+
+#[tokio::test]
+async fn refresh_with_mismatched_user_id_returns_unauthorized() {
+    // Token in DB has a different user_id than the one encoded in the JWT sub.
+    // The service must detect this inconsistency and return Unauthorized.
+    let (service, token_repo) = make_shared_service(user_with_password("password1"));
+    let token = login(&service).await;
+
+    token_repo.tamper_user_id(&token, Uuid::new_v4());
+
+    let result = service.refresh(RefreshCommand { token }).await;
+
+    assert!(matches!(result, Err(AppError::Unauthorized)));
+}
+
+#[tokio::test]
+async fn refresh_rotation_failure_leaves_old_token_intact() {
+    // If rotate_token fails, the old token must remain active (atomicity guarantee).
+    let user = user_with_password("password1");
+    let inner = Arc::new(FailingRotateTokenRepo::new());
+    let service = AuthService::new(
+        InMemoryUserRepository::with_user(user),
+        SharedFailingRepo(Arc::clone(&inner)),
+        JWT_SECRET.to_string(),
+        168_u64,
+    );
+
+    let old_token = service
+        .login(LoginCommand {
+            email: "john@example.com".to_string(),
+            password: "password1".to_string(),
+        })
+        .await
+        .unwrap()
+        .token;
+
+    assert!(
+        inner.contains(&old_token),
+        "pre-condition: old token must be seeded"
+    );
+
+    let result = service
+        .refresh(RefreshCommand {
+            token: old_token.clone(),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "refresh must propagate rotate_token failure"
+    );
+    assert!(
+        inner.contains(&old_token),
+        "old token must still be present after failed rotation"
+    );
 }

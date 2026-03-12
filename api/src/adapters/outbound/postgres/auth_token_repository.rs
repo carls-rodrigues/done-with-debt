@@ -83,4 +83,35 @@ impl AuthTokenRepository for PostgresAuthTokenRepository {
 
         Ok(())
     }
+
+    async fn rotate_token(
+        &self,
+        old_token: &str,
+        new_token: AuthToken,
+    ) -> Result<AuthToken, AppError> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO auth_tokens (id, user_id, token, expires_at, created_at)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(new_token.id)
+        .bind(new_token.user_id)
+        .bind(&new_token.token)
+        .bind(new_token.expires_at)
+        .bind(new_token.created_at)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM auth_tokens WHERE token = $1")
+            .bind(old_token)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+
+        Ok(new_token)
+    }
 }

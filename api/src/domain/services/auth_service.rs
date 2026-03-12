@@ -223,18 +223,32 @@ impl<U: UserRepository, T: AuthTokenRepository> AuthServicePort for AuthService<
         // Validate JWT signature and expiry
         let user_id = self.decode_jwt(&cmd.token)?;
 
-        // Ensure the token is still active (not revoked)
-        self.token_repo
+        // Ensure the token is still active (not revoked) and belongs to the same user
+        let stored = self
+            .token_repo
             .find_by_token(&cmd.token)
             .await?
             .ok_or(AppError::Unauthorized)?;
+        if stored.user_id != user_id {
+            return Err(AppError::Unauthorized);
+        }
 
-        let new_token = self.issue_jwt(user_id)?;
-        self.persist_token(user_id, &new_token).await?;
-        self.token_repo.revoke_by_token(&cmd.token).await?;
+        let expiry_hours = self.expiry_hours_i64()?;
+        let new_token_str = self.issue_jwt(user_id)?;
+        let new_auth_token = AuthToken {
+            id: Uuid::new_v4(),
+            user_id,
+            token: new_token_str.clone(),
+            expires_at: Utc::now() + Duration::hours(expiry_hours),
+            created_at: Utc::now(),
+        };
+
+        self.token_repo
+            .rotate_token(&cmd.token, new_auth_token)
+            .await?;
 
         Ok(AuthResult {
-            token: new_token,
+            token: new_token_str,
             user_id,
         })
     }
