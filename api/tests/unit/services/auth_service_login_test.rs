@@ -13,6 +13,8 @@ use done_with_debt_api::domain::{
     },
     services::auth_service::AuthService,
 };
+
+use super::helpers::NoopAuthTokenRepository;
 use done_with_debt_api::errors::AppError;
 
 // ── In-memory mock repository ─────────────────────────────────────────────────
@@ -166,8 +168,15 @@ impl UserRepository for SharedRepo {
 
 const JWT_SECRET: &str = "test_secret_key_32_chars_minimum!";
 
-fn make_service(repo: InMemoryUserRepository) -> AuthService<InMemoryUserRepository> {
-    AuthService::new(repo, JWT_SECRET.to_string(), 168_u64)
+fn make_service(
+    repo: InMemoryUserRepository,
+) -> AuthService<InMemoryUserRepository, NoopAuthTokenRepository> {
+    AuthService::new(
+        repo,
+        NoopAuthTokenRepository,
+        JWT_SECRET.to_string(),
+        168_u64,
+    )
 }
 
 /// Builds a User with an argon2 hash for the provided password.
@@ -265,6 +274,7 @@ async fn login_wrong_password_increments_failed_attempts() {
     let repo = Arc::new(InMemoryUserRepository::with_user(user));
     let service = AuthService::new(
         SharedRepo(Arc::clone(&repo)),
+        NoopAuthTokenRepository,
         JWT_SECRET.to_string(),
         168_u64,
     );

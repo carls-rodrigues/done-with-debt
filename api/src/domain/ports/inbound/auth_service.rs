@@ -13,6 +13,11 @@ pub struct LoginCommand {
     pub password: String,
 }
 
+pub struct LogoutCommand {
+    /// The raw JWT that was issued at login time.
+    pub token: String,
+}
+
 #[derive(Debug)]
 pub struct AuthResult {
     pub token: String,
@@ -23,4 +28,5 @@ pub struct AuthResult {
 pub trait AuthServicePort: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthResult, AppError>;
     async fn login(&self, cmd: LoginCommand) -> Result<AuthResult, AppError>;
+    async fn logout(&self, cmd: LogoutCommand) -> Result<(), AppError>;
 }

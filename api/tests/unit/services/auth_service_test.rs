@@ -15,6 +15,8 @@ use done_with_debt_api::domain::{
 };
 use done_with_debt_api::errors::AppError;
 
+use super::helpers::NoopAuthTokenRepository;
+
 // ── In-memory mock repository ────────────────────────────────────────────────
 
 struct InMemoryUserRepository {
@@ -90,9 +92,12 @@ impl UserRepository for InMemoryUserRepository {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn make_service(repo: InMemoryUserRepository) -> AuthService<InMemoryUserRepository> {
+fn make_service(
+    repo: InMemoryUserRepository,
+) -> AuthService<InMemoryUserRepository, NoopAuthTokenRepository> {
     AuthService::new(
         repo,
+        NoopAuthTokenRepository,
         "test_secret_key_32_chars_minimum!".to_string(),
         168_u64,
     )
